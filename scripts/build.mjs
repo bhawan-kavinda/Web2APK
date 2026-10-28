@@ -9,6 +9,9 @@
  *   ICON_FILE   name of the icon png inside CONFIG_DIR    (default: icon.png)
  *   OUT_DIR     where the finished APK is written  (default: $WEB_DIR/output)
  *   KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD   signing key
+ *   W2A_APP_NAME / W2A_APP_ID / W2A_URL / W2A_VERSION_NAME / W2A_VERSION_CODE
+ *               optional overrides (used by the workflow form). Non-empty value beats app.json,
+ *               empty value is ignored (app.json, then the defaults, are used).
  *
  * Missing default app.json / icon.png -> defaults/ are used
  * CONFIG_FILE / ICON_FILE set but missing -> the build stops (no silent fallback)
@@ -105,6 +108,14 @@ function takeSecrets() {
 
 // ---------------------------------------------------------------- config
 const OPTIONAL_EMPTY = new Set(['url', 'webDir', 'buildCommand', 'apkName']);
+// config key -> environment variable that overrides it (filled in by the "Run workflow" form)
+const ENV_OVERRIDES = {
+  appName: 'W2A_APP_NAME',
+  appId: 'W2A_APP_ID',
+  url: 'W2A_URL',
+  versionName: 'W2A_VERSION_NAME',
+  versionCode: 'W2A_VERSION_CODE',
+};
 
 export function loadConfig() {
   const defaults = readJson(path.join(ROOT, 'defaults', 'app.json'));
@@ -127,6 +138,12 @@ export function loadConfig() {
     if (v === '' && !OPTIONAL_EMPTY.has(k)) continue; // empty -> keep default
     cfg[k] = v;
   }
+  for (const [k, envName] of Object.entries(ENV_OVERRIDES)) {
+    const v = (process.env[envName] || '').trim();
+    if (!v) continue;
+    cfg[k] = v;
+    log(`Override: ${k} = ${v} (from ${envName})`);
+  }
   return { cfg: validate(cfg), custom };
 }
 
@@ -146,7 +163,7 @@ export function validate(cfg) {
   if (!Number.isInteger(code) || code < 1 || code > 2100000000) bad('"versionCode" must be a positive integer');
   cfg.versionCode = code;
 
-  if (/["<>&]/.test(cfg.versionName)) bad('"versionName" contains invalid characters');
+  if (!/^[0-9A-Za-z][0-9A-Za-z.+_-]*$/.test(cfg.versionName)) bad('"versionName" may only contain letters, digits and . + _ - (e.g. 1.0.0 or 1.2.0-beta)');
   if (cfg.url && !/^https?:\/\/[^\s]+$/i.test(cfg.url)) bad('"url" must start with http:// or https://');
   if (!['http', 'https'].includes(cfg.androidScheme)) bad('"androidScheme" must be "http" or "https"');
   if (!['default', 'portrait', 'landscape'].includes(cfg.orientation)) bad('"orientation" must be default, portrait or landscape');
@@ -169,7 +186,7 @@ export function validate(cfg) {
   }
 
   if (!cfg.appName.trim()) bad('"appName" is empty');
-  if (/[<>&"]/.test(cfg.appName)) bad('"appName" must not contain < > & or "');
+  if (/[<>&"'\\]/.test(cfg.appName)) bad('"appName" must not contain < > & " \' or \\ (they break the Android resource files)');
   if (!cfg.apkName) cfg.apkName = cfg.appName;
   cfg.apkName = cfg.apkName.replace(/\.apk$/i, '').replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'app';
   return cfg;
@@ -290,6 +307,15 @@ function pickIcon() {
   return { file: path.join(ROOT, 'defaults', 'icon.png'), custom: false };
 }
 
+/** sharp ships inside @capacitor/assets; npm does not always hoist it to the top level, so fall back to that package's own copy. */
+function loadSharp() {
+  const rootRequire = createRequire(path.join(ROOT, 'package.json'));
+  try {
+    return rootRequire('sharp');
+  } catch { /* not hoisted */ }
+  return createRequire(rootRequire.resolve('@capacitor/assets/package.json'))('sharp');
+}
+
 /** Normalises any image (even a JPEG named .png, or a non-square one) into a 1024x1024 PNG. */
 async function prepareIcon(src, { plain = false } = {}) {
   const dstDir = path.join(ROOT, 'resources');
@@ -298,7 +324,7 @@ async function prepareIcon(src, { plain = false } = {}) {
   fs.mkdirSync(dstDir, { recursive: true });
   if (!plain) {
     try {
-      const sharp = createRequire(path.join(ROOT, 'package.json'))('sharp');
+      const sharp = loadSharp();
       await sharp(src).resize(1024, 1024, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toFile(dst);
       return;
     } catch (e) {
@@ -311,7 +337,7 @@ async function prepareIcon(src, { plain = false } = {}) {
 /** Splash image: splashColor background with the icon in the middle (capacitor-assets turns it into every Android size). */
 async function prepareSplash(cfg) {
   try {
-    const sharp = createRequire(path.join(ROOT, 'package.json'))('sharp');
+    const sharp = loadSharp();
     const size = 2732;
     const logoSize = Math.round(size * 0.28);
     const logo = await sharp(path.join(ROOT, 'resources', 'icon.png'))
