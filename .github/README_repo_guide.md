@@ -9,6 +9,10 @@
 >
 > Do not copy this folder into your own project.
 
+> [!NOTE]
+> **This guide is for building several APKs at once (or running your own edited build script) from a fork.**
+> Need just **one APK**? Use the [Web2APK-template](https://github.com/bhawan-kavinda/Web2APK-template) or the **`setup/.github`** folder instead. Those two also have a **Run workflow form** (name, id, url, version, icon link). This multi-app workflow has no form: every app is configured by its own folder's `app.json`.
+
 ---
 
 ## Files
@@ -60,7 +64,7 @@ Choose in `run.json`:
 Set by `WEB2APK_REF` at the top of `.github/workflows/build-apk.yml`:
 
 - `'latest'` (default) → the newest release tag `vX.Y.Z`. New releases are picked up automatically.
-- `'v1.1.0'` → one fixed tag that never changes. Safest, because the build script receives your signing secrets.
+- `'vX.Y.Z'` (a tag from the Releases page) → one fixed tag that never changes. Safest, because the build script receives your signing secrets.
 
 ## Good to know
 
@@ -70,3 +74,4 @@ Set by `WEB2APK_REF` at the top of `.github/workflows/build-apk.yml`:
 - Each app needs its own unique `appId` in its `app.json`.
 - `versionCode` in `app.json` must grow with every release.
 - JSON files cannot have `//` comments.
+- `appId` letters, digits and `_` only (no `-`). `appName` must not contain `< > & " '` or `\`. `versionName` letters, digits and `. + _ -` only. A wrong value stops that app's build with a clear error.
