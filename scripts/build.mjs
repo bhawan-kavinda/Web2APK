@@ -146,7 +146,7 @@ export function validate(cfg) {
   if (!Number.isInteger(code) || code < 1 || code > 2100000000) bad('"versionCode" must be a positive integer');
   cfg.versionCode = code;
 
-  if (/["<>&]/.test(cfg.versionName)) bad('"versionName" contains invalid characters');
+  if (!/^[0-9A-Za-z][0-9A-Za-z.+_-]*$/.test(cfg.versionName)) bad('"versionName" may only contain letters, digits and . + _ - (e.g. 1.0.0 or 1.2.0-beta)');
   if (cfg.url && !/^https?:\/\/[^\s]+$/i.test(cfg.url)) bad('"url" must start with http:// or https://');
   if (!['http', 'https'].includes(cfg.androidScheme)) bad('"androidScheme" must be "http" or "https"');
   if (!['default', 'portrait', 'landscape'].includes(cfg.orientation)) bad('"orientation" must be default, portrait or landscape');
@@ -169,7 +169,7 @@ export function validate(cfg) {
   }
 
   if (!cfg.appName.trim()) bad('"appName" is empty');
-  if (/[<>&"]/.test(cfg.appName)) bad('"appName" must not contain < > & or "');
+  if (/[<>&"'\\]/.test(cfg.appName)) bad('"appName" must not contain < > & " \' or \\ (they break the Android resource files)');
   if (!cfg.apkName) cfg.apkName = cfg.appName;
   cfg.apkName = cfg.apkName.replace(/\.apk$/i, '').replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'app';
   return cfg;
@@ -290,6 +290,15 @@ function pickIcon() {
   return { file: path.join(ROOT, 'defaults', 'icon.png'), custom: false };
 }
 
+/** sharp ships inside @capacitor/assets; npm does not always hoist it to the top level, so fall back to that package's own copy. */
+function loadSharp() {
+  const rootRequire = createRequire(path.join(ROOT, 'package.json'));
+  try {
+    return rootRequire('sharp');
+  } catch { /* not hoisted */ }
+  return createRequire(rootRequire.resolve('@capacitor/assets/package.json'))('sharp');
+}
+
 /** Normalises any image (even a JPEG named .png, or a non-square one) into a 1024x1024 PNG. */
 async function prepareIcon(src, { plain = false } = {}) {
   const dstDir = path.join(ROOT, 'resources');
@@ -298,7 +307,7 @@ async function prepareIcon(src, { plain = false } = {}) {
   fs.mkdirSync(dstDir, { recursive: true });
   if (!plain) {
     try {
-      const sharp = createRequire(path.join(ROOT, 'package.json'))('sharp');
+      const sharp = loadSharp();
       await sharp(src).resize(1024, 1024, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toFile(dst);
       return;
     } catch (e) {
@@ -311,7 +320,7 @@ async function prepareIcon(src, { plain = false } = {}) {
 /** Splash image: splashColor background with the icon in the middle (capacitor-assets turns it into every Android size). */
 async function prepareSplash(cfg) {
   try {
-    const sharp = createRequire(path.join(ROOT, 'package.json'))('sharp');
+    const sharp = loadSharp();
     const size = 2732;
     const logoSize = Math.round(size * 0.28);
     const logo = await sharp(path.join(ROOT, 'resources', 'icon.png'))
