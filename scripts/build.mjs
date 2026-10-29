@@ -9,6 +9,9 @@
  *   ICON_FILE   name of the icon png inside CONFIG_DIR    (default: icon.png)
  *   OUT_DIR     where the finished APK is written  (default: $WEB_DIR/output)
  *   KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD   signing key
+ *   W2A_APP_NAME / W2A_APP_ID / W2A_URL / W2A_VERSION_NAME / W2A_VERSION_CODE
+ *               optional overrides (used by the workflow form). Non-empty value beats app.json,
+ *               empty value is ignored (app.json, then the defaults, are used).
  *
  * Missing default app.json / icon.png -> defaults/ are used
  * CONFIG_FILE / ICON_FILE set but missing -> the build stops (no silent fallback)
@@ -105,6 +108,14 @@ function takeSecrets() {
 
 // ---------------------------------------------------------------- config
 const OPTIONAL_EMPTY = new Set(['url', 'webDir', 'buildCommand', 'apkName']);
+// config key -> environment variable that overrides it (filled in by the "Run workflow" form)
+const ENV_OVERRIDES = {
+  appName: 'W2A_APP_NAME',
+  appId: 'W2A_APP_ID',
+  url: 'W2A_URL',
+  versionName: 'W2A_VERSION_NAME',
+  versionCode: 'W2A_VERSION_CODE',
+};
 
 export function loadConfig() {
   const defaults = readJson(path.join(ROOT, 'defaults', 'app.json'));
@@ -126,6 +137,12 @@ export function loadConfig() {
     const v = typeof raw === 'string' ? raw.trim() : raw;
     if (v === '' && !OPTIONAL_EMPTY.has(k)) continue; // empty -> keep default
     cfg[k] = v;
+  }
+  for (const [k, envName] of Object.entries(ENV_OVERRIDES)) {
+    const v = (process.env[envName] || '').trim();
+    if (!v) continue;
+    cfg[k] = v;
+    log(`Override: ${k} = ${v} (from ${envName})`);
   }
   return { cfg: validate(cfg), custom };
 }

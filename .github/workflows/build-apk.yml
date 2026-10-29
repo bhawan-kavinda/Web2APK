@@ -1,111 +1,107 @@
-# Web2APK - build one or many Android APKs (FORK / MULTI-APP workflow).
+# Web2APK - build ONE Android APK from this project (works from a phone, no file editing needed).
 #
-# WHO USES THIS FILE: people who FORK the Web2APK repo, or who want to build 2-3+ APKs at once.
-# (If you only copy a .github folder into your own project, use  setup/.github  instead.)
+# HOW TO USE (phone or computer):
+#   Actions tab -> Build APK -> Run workflow -> fill the form (all fields optional) -> Run.
+#   When it turns green: open the run -> Artifacts -> apk.
+#
+# Value order for every setting:  form field  >  .github/app.json  >  Web2APK defaults.
+# An empty form field is ignored, so you only type what you want to change.
 #
 # Layout:
 #   .github/workflows/build-apk.yml   (this file - leave as is)
-#   .github/run.json                  ("source" + the list of app folders to build)
-#   .github/<app-name>/app.json       (that app's name, id, version ...)
-#   .github/<app-name>/icon.png       (that app's icon)
+#   .github/app.json                  (optional saved settings)
+#   .github/icon.png                  (optional app icon)
+#   public/                           (your website files, used when "url" is empty)
 #
-# run.json "source":
-#   "clone"  (default) -> the official Web2APK release (latest tag, see WEB2APK_REF) is cloned.
-#   "."                -> scripts/build.mjs from THIS repo is used (your own edited fork).
-# Only the folders listed in "builds" are built; every other folder is ignored.
-# A missing app.json / icon.png in a listed folder is not an error: Web2APK's defaults are used.
-# Push (or run manually) -> Actions tab -> Build APK -> run -> Artifacts -> apk-<app-name>
+# This workflow always uses an official, tagged Web2APK release (never local code).
+# By default that is the newest release; set WEB2APK_REF below to pin one tag.
 name: Build APK
 
 on:
   push:
     branches: [main, master]
-    # A push that changes ONLY .md files (README, guides, notes) does not start a build.
-    # If the push also changes any other file, the build runs as usual.
+    # A push that changes ONLY .md files (README, notes) does not start a build.
     paths-ignore:
       - '**.md'
-  workflow_dispatch:      # the Run workflow button always works
+  workflow_dispatch:
+    inputs:
+      appName:
+        description: 'App name (empty = app.json)'
+        required: false
+        default: ''
+        type: string
+      appId:
+        description: 'Package id, e.g. com.me.shop (empty = app.json)'
+        required: false
+        default: ''
+        type: string
+      url:
+        description: 'Website to load, e.g. https://example.com (empty = app.json / public folder)'
+        required: false
+        default: ''
+        type: string
+      versionName:
+        description: 'Version shown to users, e.g. 1.0.0 (empty = app.json)'
+        required: false
+        default: ''
+        type: string
+      versionCode:
+        description: 'Whole number, must grow every release (empty = app.json)'
+        required: false
+        default: ''
+        type: string
+      iconUrl:
+        description: 'Direct https link to a square PNG icon (empty = .github/icon.png)'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
 
 env:
   # The public Web2APK repo that does the real work, as  owner/repo.
-  # People who copy the .github folder do not need to change this.
   WEB2APK_REPO: bhawan-kavinda/Web2APK
-  # Which Web2APK release to use when run.json source is "clone".
-  #   'latest'  = always the newest release tag (vX.Y.Z) of the Web2APK repo. Publish a new
-  #               release there and every user gets it automatically.
-  #   'v1.1.0'  = pin one exact tag (safest: this script receives your signing secrets,
+  # Which Web2APK release to use.
+  #   'latest'  = always the newest release tag (vX.Y.Z) of the Web2APK repo.
+  #   a tag     = pin one exact release (safest: the build script receives your signing secrets,
   #               so a pinned tag never changes under you).
   # Branches are never followed - only release tags. (Empty = same as 'latest'.)
   WEB2APK_REF: 'latest'
 
 jobs:
-  plan:
-    name: Read run.json
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.read.outputs.matrix }}
-      source: ${{ steps.read.outputs.source }}
-    steps:
-      - name: Checkout web repo
-        uses: actions/checkout@v4
-
-      - name: Read .github/run.json
-        id: read
-        run: |
-          node - <<'NODE'
-          const fs = require('fs');
-          const dir = '.github';
-          const okName = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-          const fail = (m) => { console.log(`::error::${m}`); process.exit(1); };
-
-          const runFile = `${dir}/run.json`;
-          if (!fs.existsSync(runFile)) fail('.github/run.json not found. Create it like {"builds": ["my-app"]}');
-          let j;
-          try { j = JSON.parse(fs.readFileSync(runFile, 'utf8')); } catch (e) { fail(`run.json: ${e.message}`); }
-          const rawSource = j && j.source !== undefined ? j.source : 'clone';
-          const source = typeof rawSource === 'string' ? rawSource.trim() : rawSource;
-          if (source !== 'clone' && source !== '.') fail(`run.json: "source" must be "clone" (official release) or "." (this repo's own build script), got ${JSON.stringify(rawSource)}`);
-          if (source === '.' && !fs.existsSync('scripts/build.mjs')) fail('run.json: "source" is "." but scripts/build.mjs does not exist in this repo. Use a fork of Web2APK, or set "source" to "clone".');
-          const builds = j && j.builds;
-          if (!Array.isArray(builds) || !builds.length) fail('run.json: "builds" must be a non-empty list of folder names, e.g. {"builds": ["my-app"]}');
-
-          const seen = new Set();
-          const matrix = [];
-          builds.forEach((raw, i) => {
-            const at = `run.json builds[${i}]`;
-            if (typeof raw !== 'string') fail(`${at} must be a folder name (text), got ${JSON.stringify(raw)}`);
-            const name = raw.trim();
-            if (!okName.test(name)) fail(`${at}: "${name}" is not a valid folder name (letters, digits, . _ - only)`);
-            if (name === 'workflows') fail(`${at}: "workflows" is not an app folder`);
-            if (seen.has(name)) fail(`${at}: folder "${name}" is listed twice`);
-            seen.add(name);
-            const folder = `${dir}/${name}`;
-            if (!fs.existsSync(folder) || !fs.statSync(folder).isDirectory()) fail(`${at}: folder ${folder}/ does not exist`);
-            for (const f of ['app.json', 'icon.png'])
-              if (!fs.existsSync(`${folder}/${f}`)) console.log(`::warning::${folder}/${f} is missing - Web2APK's default ${f === 'app.json' ? 'settings are' : 'icon is'} used for "${name}"`);
-            matrix.push({ name });
-          });
-
-          console.log(`Build script source: ${source === '.' ? '"." (this repo)' : '"clone" (official release)'}`);
-          console.log(`Will build ${matrix.length} APK(s):`);
-          matrix.forEach((m) => console.log(`  - ${dir}/${m.name}/`));
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, `matrix=${JSON.stringify(matrix)}\nsource=${source}\n`);
-          NODE
-
   build:
-    name: Build ${{ matrix.name }}
-    needs: plan
+    name: Build APK
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false   # one failing APK must not stop the others
-      matrix:
-        include: ${{ fromJson(needs.plan.outputs.matrix) }}
     steps:
-      - name: Checkout web repo
+      - name: Checkout project
         uses: actions/checkout@v4
+
+      - name: Download icon from form link (optional)
+        env:
+          ICON_URL: ${{ inputs.iconUrl }}
+        run: |
+          if [ -n "$ICON_URL" ]; then
+            case "$ICON_URL" in
+              https://*) ;;
+              *) echo "::error::iconUrl must start with https://"; exit 1 ;;
+            esac
+            mkdir -p .github
+            curl -fsSL --max-time 30 --max-filesize 10485760 -o .github/icon.png -- "$ICON_URL" \
+              || { echo "::error::Could not download the icon from iconUrl"; exit 1; }
+            case "$(file -b --mime-type .github/icon.png)" in
+              image/*) echo "Icon downloaded from iconUrl" ;;
+              *) echo "::error::iconUrl did not return an image (use a direct link to a PNG file)"; exit 1 ;;
+            esac
+          fi
+
+      - name: Check config files
+        run: |
+          for f in app.json icon.png; do
+            if [ ! -f ".github/$f" ]; then
+              echo "::warning::.github/$f is missing - Web2APK's default is used instead."
+            fi
+          done
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -118,44 +114,34 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Get Web2APK
-        env:
-          W2A_SOURCE: ${{ needs.plan.outputs.source }}
+      - name: Get Web2APK (official release)
         run: |
-          if [ "$W2A_SOURCE" = "." ]; then
-            # run.json source "." -> use this repo's own scripts/build.mjs (no clone)
-            if [ ! -f "$GITHUB_WORKSPACE/scripts/build.mjs" ]; then
-              echo "::error::run.json source is \".\" but scripts/build.mjs is missing in this repo."
+          REPO_URL="https://github.com/$WEB2APK_REPO.git"
+          REF="$WEB2APK_REF"
+          if [ -z "$REF" ] || [ "$REF" = "latest" ]; then
+            # newest release tag of the form vX.Y.Z (no branches, no pre-release tags)
+            REF=$(git ls-remote --tags --refs --sort=-v:refname "$REPO_URL" 'v*' | sed 's#.*refs/tags/##' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1)
+            if [ -z "$REF" ]; then
+              echo "::error::No release tag (vX.Y.Z) found in $WEB2APK_REPO. Publish a release, or set WEB2APK_REF to a tag."
               exit 1
             fi
-            echo "Using this repo's build script (source: .)"
-            echo "W2A_DIR=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
-          elif [ "${GITHUB_REPOSITORY,,}" = "${WEB2APK_REPO,,}" ]; then
-            # running inside the Web2APK repo itself (self-test) - no clone needed
-            echo "W2A_DIR=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
-          else
-            REPO_URL="https://github.com/$WEB2APK_REPO.git"
-            REF="$WEB2APK_REF"
-            if [ -z "$REF" ] || [ "$REF" = "latest" ]; then
-              # newest release tag of the form vX.Y.Z (no branches, no pre-release tags)
-              REF=$(git ls-remote --tags --refs --sort=-v:refname "$REPO_URL" 'v*' | sed 's#.*refs/tags/##' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1)
-              if [ -z "$REF" ]; then
-                echo "::error::No release tag (vX.Y.Z) found in $WEB2APK_REPO. Publish a release, or set WEB2APK_REF to a tag."
-                exit 1
-              fi
-            fi
-            echo "Cloning official Web2APK $REF (source: clone)"
-            git clone --depth 1 --branch "$REF" "$REPO_URL" "$RUNNER_TEMP/Web2APK"
-            echo "W2A_DIR=$RUNNER_TEMP/Web2APK" >> "$GITHUB_ENV"
           fi
+          echo "Cloning official Web2APK $REF"
+          git clone --depth 1 --branch "$REF" "$REPO_URL" "$RUNNER_TEMP/Web2APK"
+          echo "W2A_DIR=$RUNNER_TEMP/Web2APK" >> "$GITHUB_ENV"
 
       - name: Build APK
         env:
           WEB_DIR: ${{ github.workspace }}
-          # Only this app's folder (app.json + icon.png) is read; all other folders are ignored.
-          CONFIG_DIR: ${{ github.workspace }}/.github/${{ matrix.name }}
+          CONFIG_DIR: ${{ github.workspace }}/.github
           OUT_DIR: ${{ github.workspace }}/output
-          # Optional signing key (see example.env). Empty = a temporary key is generated.
+          # Form fields (empty = ignored). Passed as env vars on purpose: never inline them in a script.
+          W2A_APP_NAME: ${{ inputs.appName }}
+          W2A_APP_ID: ${{ inputs.appId }}
+          W2A_URL: ${{ inputs.url }}
+          W2A_VERSION_NAME: ${{ inputs.versionName }}
+          W2A_VERSION_CODE: ${{ inputs.versionCode }}
+          # Optional signing key. Empty = a temporary key is generated.
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
@@ -165,6 +151,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: apk-${{ matrix.name }}
+          name: apk
           path: output/*.apk
           if-no-files-found: error

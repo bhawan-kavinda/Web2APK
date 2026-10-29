@@ -1,7 +1,8 @@
 # Web2APK setup - build ONE APK in your own project
 
 Use this folder when you want to turn **your own web project** into an Android APK.
-It builds **one APK** from **one `app.json`** and **one `icon.png`**.
+It builds **one APK** from **one `app.json`** and **one `icon.png`**, or from the **Run workflow form**.
+Starting from nothing on a phone? Use the [Web2APK-template](https://github.com/bhawan-kavinda/Web2APK-template) repository, it contains this same folder.
 
 > [!IMPORTANT]
 > **Copy only the `.github` folder that is inside this `setup/` folder** ([`setup/.github`](./.github)).
@@ -31,6 +32,23 @@ setup/
 4. **Push** to `main` (or `master`), or run it by hand: **Actions → Build APK → Run workflow**.
 5. **Download your APK:** open the finished run → **Artifacts** → `apk`.
 
+## Run from a form (no file editing)
+
+You can skip editing `app.json` and fill a form instead: **Actions → Build APK → Run workflow**.
+Every field is optional.
+
+| Field | What to type |
+|-------|--------------|
+| `appName` | Name shown under the app icon |
+| `appId` | Unique package name, e.g. `com.me.shop` |
+| `url` | Website to load, e.g. `https://my-shop.com` |
+| `versionName` | Version shown to users, e.g. `1.0.0` |
+| `versionCode` | Whole number, must grow with every release |
+| `iconUrl` | Direct `https` link to a square PNG icon |
+
+An empty field is ignored. Order of values: **form field → `.github/app.json` → Web2APK defaults.**
+On a phone with no project yet, use the [Web2APK-template](https://github.com/bhawan-kavinda/Web2APK-template) repository instead.
+
 ## app.json
 
 Only change what you need. Delete any key you do not need and the default is used.
@@ -38,9 +56,9 @@ Keys that start with `_` are notes and are ignored. JSON cannot have `//` commen
 
 | Key | What it does |
 |-----|--------------|
-| `appName` | Name shown under the app icon |
-| `appId` | Unique Android package name, e.g. `com.mycompany.myapp`. Use a different one for every app |
-| `versionName` | Version shown to users, e.g. `1.0.0` |
+| `appName` | Name shown under the app icon. Must not contain `< > & " '` or `\` |
+| `appId` | Unique Android package name, e.g. `com.mycompany.myapp`. Use a different one for every app. Letters, digits and `_` only, no `-` |
+| `versionName` | Version shown to users, e.g. `1.0.0`. Letters, digits and `. + _ -` only |
 | `versionCode` | Whole number. **Must grow with every release** |
 | `apkName` | Output file name without `.apk` |
 | `url` | Your **live website link**. The app loads this site. Leave empty to bundle your repo's web files instead |
@@ -76,7 +94,7 @@ This workflow always downloads an **official, tagged Web2APK release**. It never
 By default it uses the **newest release**. To lock one exact release, change this line near the top of `.github/workflows/build-apk.yml`:
 
 ```yaml
-WEB2APK_REF: 'v1.1.0'    # fixed release   (default is 'latest')
+WEB2APK_REF: 'vX.Y.Z'    # fixed release tag from the Releases page (default is 'latest')
 ```
 
 ## Signing key (optional)
@@ -106,5 +124,8 @@ Never commit the keystore or passwords to your repo.
 
 - **Default name, id or icon in the APK** → `.github/app.json` or `.github/icon.png` is missing (see the yellow warning in the run log). You did not copy the whole `setup/.github` folder.
 - **Workflow does not start on push** → it only runs on `main` / `master`. Otherwise use **Actions → Build APK → Run workflow**.
+- **Error mentions `appId`, `appName` or `versionName`** → a character is not allowed (see the `app.json` table above). Fix it in `app.json` or in the form.
+- **`iconUrl did not return an image`** → use a direct link to a PNG file, not a web page.
+- **Form field seems ignored** → an empty field is ignored on purpose. Also check that the newest Web2APK release is the one in use (see `WEB2APK_REF`).
 - **No APK in Artifacts** → open the run and read the red error in the log.
 - **Need 2-3 APKs at once, or want to edit the build script?** → fork the Web2APK repo and use its root `.github` folder instead.
