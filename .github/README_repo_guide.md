@@ -60,7 +60,7 @@ Choose in `run.json`:
 Set by `WEB2APK_REF` at the top of `.github/workflows/build-apk.yml`:
 
 - `'latest'` (default) → the newest release tag `vX.Y.Z`. New releases are picked up automatically.
-- `'v1.1.0'` → one fixed tag that never changes. Safest, because the build script receives your signing secrets.
+- `'vX.Y.Z'` (a tag from the Releases page) → one fixed tag that never changes. Safest, because the build script receives your signing secrets.
 
 ## Good to know
 
